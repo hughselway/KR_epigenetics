@@ -1,0 +1,105 @@
+# Samples QC
+
+``` {r imports, include=FALSE}
+library(tidyverse)
+
+if (!requireNamespace("minfi", quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+    }
+    BiocManager::install("minfi")
+}
+library(minfi)
+```
+
+
+``` {r load_data}
+targets <- list(
+    read.metharray.sheet("minfi_analysis/Batch_1"),
+    read.metharray.sheet("minfi_analysis/Batch_2")
+)
+RGSet <- lapply(targets, function(t) read.metharray.exp(targets = t))
+```
+
+Now we preprocess the data to get a methyl set, then map to a genome and convert to a
+ratio set for downstream LM analysis.
+
+``` {r preprocess}
+MSet <- RGSet %>% lapply(preprocessIllumina)
+GMSet <- MSet %>% lapply(mapToGenome)
+RSet <- MSet %>% lapply(ratioConvert, type = "Illumina")
+GRSet <- GMSet %>% lapply(ratioConvert, type = "Illumina")
+```
+
+``` {r qc}
+qc <- GMSet %>%
+    lapply(minfiQC)
+```
+
+``` {r plot-qc}
+# ensure directory exists
+if (!dir.exists("plots/qc")) {
+    dir.create("plots/qc", recursive = TRUE)
+}
+
+lapply(1:length(qc), function(i) {
+    png(paste0("plots/qc/minfi_qc_batch_", i, ".png"))
+    plotQC(qc[[i]]$qc)
+    dev.off()
+    png(paste0("plots/qc/minfi_control_strip_batch_", i, ".png"))
+    controlStripPlot(RGSet[[i]])
+    dev.off()
+    png(paste0("plots/qc/minfi_density_batch_", i, ".png"))
+    densityBeanPlot(MSet[[i]])
+    dev.off()
+    qcReport(RGSet[[i]], pdf = paste0("plots/qc/minfi_qc_report_batch_", i, ".pdf"))
+})
+```
+
+Now we can check that the predicted sexes match up with the true sex.
+
+``` {r check-sex}
+samplesheet <- read.csv("assets/annotated_samplesheet.csv")
+samplesheet$minfi_samplename <- paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
+
+# show only Row.Names, predictedSex and RNA_predicted_sex
+sex_check <- qc %>% lapply(
+    function(q) {
+        merge(q$qc, samplesheet, by.x = "row.names", by.y = "minfi_samplename") %>%
+            as_tibble() %>%
+            select(Row.names, predictedSex, RNA_predicted_sex, Sample_Name)
+    }
+)
+# print rows where predictedSex != RNA_predicted_sex
+lapply(sex_check, function(df) {
+    df[df$predictedSex != df$RNA_predicted_sex, ]
+})
+```
+
+``` {r plot-sex}
+lapply(1:length(qc), function(i) {
+    png(paste0("plots/qc/minfi_sex_batch_", i, ".png"), width = 300, height = 200)
+    p <- GRSet[[i]] %>%
+        getSex() %>%
+        as_tibble(rownames = "id") %>%
+        mutate(annotation = ifelse(xMed < 11.6 & yMed < 11, id, "")) %>%
+        ggplot(aes(x = xMed, y = yMed, color = predictedSex)) +
+        geom_point() +
+        geom_text(aes(label = annotation), vjust = -1) +
+        theme_minimal() +
+        ggtitle(paste("Batch", i))
+    print(p)
+    dev.off()
+})
+```
+
+Now we extract the ~60 SNPs on the EPIC array that are used to check for sample swaps.
+``` {r extract-snps}
+library(IlluminaHumanMethylationEPICmanifest)
+data(IlluminaHumanMethylationEPICmanifest)
+getProbeInfo(IlluminaHumanMethylationEPICmanifest, type = "SnpI")
+getProbeInfo(IlluminaHumanMethylationEPICmanifest, type = "SnpII")
+
+RGSet %>%
+    lapply(getSnpInfo)
+```

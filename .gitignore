@@ -1,0 +1,10 @@
+assets/
+
+# output
+intermediate_results/
+meqtl_results/
+plots/
+
+# data
+unchanged_data_dir/
+minfi_analysis/
