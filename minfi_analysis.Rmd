@@ -21,7 +21,6 @@ targets <- list(
 )
 RGSets <- targets %>%
     lapply(function(t) read.metharray.exp(targets = t, extended = TRUE))
-# TODO filter these out in the given order, counting how many are removed at each step
 MSet <- RGSets %>%
     lapply(preprocessIllumina)
 unfiltered_probe_count <- MSet[[1]] %>%
@@ -112,7 +111,8 @@ probe_locations <- MSet[[1]] %>%
 
 # Filter out probes with common SNPs in Zhou 2017 list
 beta$filtered <- beta$filtered[
-    rownames(beta$filtered) %in% probe_locations$probe[!probe_locations$MASK.snp5.common],
+    rownames(beta$filtered) %in%
+        probe_locations$probe[!probe_locations$MASK.snp5.common],
 ]
 post_zhou_filter_n_probes <- nrow(beta$filtered)
 message(paste0(
@@ -180,7 +180,10 @@ for (pca_type in c("unfiltered", "filtered")) {
         xlab("Principal component") +
         ggtitle(paste("Variance explained by each PC (", pca_type, ")", sep = "")) +
         theme(axis.text.x = element_text(angle = 90, hjust = 1))
-    ggsave(paste0("plots/pca/", pca_type, "/variance_explained.png"), width = 8, height = 5)
+    ggsave(
+        paste0("plots/pca/", pca_type, "/variance_explained.png"),
+        width = 4, height = 3, create.dir = TRUE
+    )
 }
 ```
 
@@ -191,22 +194,16 @@ pca_df <- list(
 )
 
 samplesheet <- read.csv("assets/annotated_samplesheet.csv")
-samplesheet$minfi_samplename <- paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
+samplesheet$minfi_samplename <-
+    paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
 
-# replicate in R:
-# pr_comps["Sample_Name"] = (
-#    pr_comps["Sample_Name"]
-#    .str.replace(" ", "")
-#    .str.replace("-", "")
-#    .str.replace("L", "")
-# )
 samplesheet$stripped_sample_name <- samplesheet$Sample_Name %>%
     str_replace_all(" ", "") %>%
     str_replace_all("-", "") %>%
     str_replace_all("L", "")
 samplesheet <- samplesheet %>%
     merge(
-        read.csv("UCL_PatientBackground- added May 2024_KR_MM.csv") %>%
+        read.csv("assets/UCL_PatientBackground- added May 2024_KR_MM.csv") %>%
             mutate(
                 stripped_sample_name = SampleID %>%
                     str_replace_all(" ", "") %>%
@@ -214,7 +211,10 @@ samplesheet <- samplesheet %>%
                     str_replace_all("\\(FI\\)", "") %>%
                     str_replace_all("L", "")
             ) %>%
-            select(c("stripped_sample_name", "Sex", "Age_at_intervention", "disease", "Chemo.Radio")),
+            select(c(
+                "stripped_sample_name", "Sex", "Age_at_intervention",
+                "disease", "Chemo.Radio"
+            )),
         by = "stripped_sample_name"
     ) %>%
     select(-stripped_sample_name)
@@ -227,6 +227,9 @@ for (pca_type in c("unfiltered", "filtered")) {
     )
 }
 # save pca
+if (!dir.exists("intermediate_results")) {
+    dir.create("intermediate_results")
+}
 for (pca_type in c("unfiltered", "filtered")) {
     pca_df[[pca_type]] %>%
         write_csv(paste0("intermediate_results/pca_", pca_type, ".csv"))
@@ -244,11 +247,18 @@ for (pca_type in c("unfiltered", "filtered")) {
     }
     ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
         geom_point()
-    ggsave(paste0(pca_dir, "/by_batch.png"), width = 8, height = 5)
+    ggsave(paste0(pca_dir, "/by_batch.png"), width = 5, height = 3)
 
     ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = RNA_predicted_sex)) +
         geom_point()
-    ggsave(paste0(pca_dir, "/by_sex.png"), width = 8, height = 5)
+    ggsave(paste0(pca_dir, "/by_sex.png"), width = 5, height = 3)
+
+    ggplot(
+        pca_df[[pca_type]],
+        aes(x = PC1, y = PC2, color = batch, shape = RNA_predicted_sex)
+    ) +
+        geom_point()
+    ggsave(paste0(pca_dir, "/by_batch_and_sex.png"), width = 5, height = 3)
 
     # sample name annotated
     ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
@@ -258,7 +268,7 @@ for (pca_type in c("unfiltered", "filtered")) {
             point.padding = unit(0.5, "lines"),
             segment.color = "grey50"
         )
-    ggsave(paste0(pca_dir, "/by_batch_annotated.png"), width = 8, height = 5)
+    ggsave(paste0(pca_dir, "/by_batch_annotated.png"), width = 5, height = 3)
 
 
     for (snp_name in SNP_names) {
@@ -269,8 +279,11 @@ for (pca_type in c("unfiltered", "filtered")) {
                 point.padding = unit(0.5, "lines"),
                 segment.color = "grey50"
             ) + # set the title of the legend to the SNP name
-            scale_color_manual(name = snp_name, values = c("CC" = "red", "CG" = "blue", "GG" = "green"))
-        ggsave(paste0(pca_dir, "/", snp_name, ".png"), width = 6, height = 4)
+            scale_color_manual(
+                name = snp_name,
+                values = c("CC" = "red", "CG" = "blue", "GG" = "green")
+            )
+        ggsave(paste0(pca_dir, "/", snp_name, ".png"), width = 5, height = 3)
     }
 }
 ```
@@ -312,12 +325,30 @@ comparison_group_memberships <- samplesheet %>%
         F = ifelse(TMC4 == "CC", 0, ifelse(TMC4 == "TT", 1, NA)),
         G = ifelse(TMC4 == "CT", 0, ifelse(TMC4 == "TT", 1, NA)),
         H = ifelse(HSD17B13 == "CC", 0, ifelse(HSD17B13 == "CG", 1, NA)),
-        I = ifelse(TM6SF2 == "CC" & PNPLA3 == "CC", 0, ifelse(TM6SF2 == "CC" & PNPLA3 == "CG", 1, NA)),
-        J = ifelse(TM6SF2 == "CC" & PNPLA3 == "CC", 0, ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)),
-        K = ifelse(TM6SF2 == "CC" & PNPLA3 == "CG", 0, ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)),
-        L = ifelse(PNPLA3 == "CC" & TMC4 == "CC", 0, ifelse(PNPLA3 == "CC" & TMC4 == "CT", 1, NA)),
-        O = ifelse(TMC4 == "CT" & PNPLA3 == "CC", 0, ifelse(TMC4 == "CT" & PNPLA3 == "CG", 1, NA)),
-        R = ifelse(TM6SF2 == "CC" & TMC4 == "CC", 0, ifelse(TM6SF2 == "CC" & TMC4 == "CT", 1, NA))
+        I = ifelse(
+            TM6SF2 == "CC" & PNPLA3 == "CC", 0,
+            ifelse(TM6SF2 == "CC" & PNPLA3 == "CG", 1, NA)
+        ),
+        J = ifelse(
+            TM6SF2 == "CC" & PNPLA3 == "CC", 0,
+            ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
+        ),
+        K = ifelse(
+            TM6SF2 == "CC" & PNPLA3 == "CG", 0,
+            ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
+        ),
+        L = ifelse(
+            PNPLA3 == "CC" & TMC4 == "CC", 0,
+            ifelse(PNPLA3 == "CC" & TMC4 == "CT", 1, NA)
+        ),
+        O = ifelse(
+            TMC4 == "CT" & PNPLA3 == "CC", 0,
+            ifelse(TMC4 == "CT" & PNPLA3 == "CG", 1, NA)
+        ),
+        R = ifelse(
+            TM6SF2 == "CC" & TMC4 == "CC", 0,
+            ifelse(TM6SF2 == "CC" & TMC4 == "CT", 1, NA)
+        )
     ) %>%
     select(-PNPLA3, -TM6SF2, -TMC4, -HSD17B13) %>%
     pivot_longer(
@@ -359,7 +390,9 @@ if (!file.exists("meqtl_results/targeted_meQTL_raw.csv")) {
 }
 ```
 
-Now we assess the results of the meQTL analysis, using Holm correction for multiple testing.
+
+Now we assess the results of the meQTL analysis, using Holm correction for multiple 
+testing.
 ``` {r meQTL-results}
 meqtl_results <- read.csv("meqtl_results/targeted_meQTL_raw.csv") %>%
     mutate(Holm_p_value = p.adjust(p_value, method = "holm")) %>%
@@ -372,7 +405,10 @@ Now for each test, print out the number of significant results for each snp.
 ``` {r significant-results}
 results_df <- meqtl_results %>%
     group_by(comparison) %>%
-    summarise(n_significant = sum(Holm_p_value < 0.05, na.rm = TRUE))
+    summarise(
+        n_significant = sum(Holm_p_value < 0.05, na.rm = TRUE),
+        n_total = n()
+    )
 results_df %>%
     write_csv("meqtl_results/n_significant.csv")
 ```
@@ -385,7 +421,10 @@ filtered_results <- read.csv("meqtl_results/targeted_meQTL.csv") %>%
 
 # Initialize BioMart
 mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-attributes <- c("ensembl_gene_id", "start_position", "end_position", "hgnc_symbol", "chromosome_name", "entrezgene_id")
+attributes <- c(
+    "ensembl_gene_id", "start_position", "end_position",
+    "hgnc_symbol", "chromosome_name", "entrezgene_id"
+)
 filters <- c("chromosome_name", "start", "end")
 
 gene_annotations <- lapply(1:nrow(filtered_results), function(i) {
@@ -394,7 +433,9 @@ gene_annotations <- lapply(1:nrow(filtered_results), function(i) {
         chromosome_name = row$seqnames %>% str_replace_all("chr", ""),
         start = row$start, end = row$end
     )
-    getBM(attributes = attributes, filters = filters, values = values, mart = mart) %>%
+    getBM(
+        attributes = attributes, filters = filters, values = values, mart = mart
+    ) %>%
         mutate(comparison = row$comparison, probe = row$probe)
 }) %>%
     do.call(rbind, .)
@@ -406,7 +447,10 @@ gene_annotations
 
 ``` {r significant_results}
 comparison_names <- data.frame(
-    comparison = c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "O", "R"),
+    comparison = c(
+        "A", "B", "C", "D", "E", "F",
+        "G", "H", "I", "J", "K", "L", "O", "R"
+    ),
     name = c(
         "PNP_CCvCG", "PNP_CCvGG", "PNP_CGvGG",
         "TM6_CCvCT",
