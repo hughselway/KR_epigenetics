@@ -42,17 +42,22 @@ if (!dir.exists("plots/qc")) {
     dir.create("plots/qc", recursive = TRUE)
 }
 
-lapply(1:length(qc), function(i) {
-    png(paste0("plots/qc/minfi_qc_batch_", i, ".png"))
-    plotQC(qc[[i]]$qc)
-    dev.off()
-    png(paste0("plots/qc/minfi_control_strip_batch_", i, ".png"))
-    controlStripPlot(RGSet[[i]])
-    dev.off()
-    png(paste0("plots/qc/minfi_density_batch_", i, ".png"))
-    densityBeanPlot(MSet[[i]])
-    dev.off()
-    qcReport(RGSet[[i]], pdf = paste0("plots/qc/minfi_qc_report_batch_", i, ".pdf"))
+suppressWarnings({
+    lapply(1:length(qc), function(i) {
+        png(paste0("plots/qc/minfi_qc_batch_", i, ".png"))
+        plotQC(qc[[i]]$qc)
+        dev.off()
+        png(paste0("plots/qc/minfi_control_strip_batch_", i, ".png"))
+        controlStripPlot(RGSet[[i]])
+        dev.off()
+        png(paste0("plots/qc/minfi_density_batch_", i, ".png"))
+        densityBeanPlot(MSet[[i]])
+        dev.off()
+        qcReport(
+            RGSet[[i]],
+            pdf = paste0("plots/qc/minfi_qc_report_batch_", i, ".pdf")
+        )
+    })
 })
 ```
 
@@ -60,7 +65,8 @@ Now we can check that the predicted sexes match up with the true sex.
 
 ``` {r check-sex}
 samplesheet <- read.csv("assets/annotated_samplesheet.csv")
-samplesheet$minfi_samplename <- paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
+samplesheet$minfi_samplename <-
+    paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
 
 # show only Row.Names, predictedSex and RNA_predicted_sex
 sex_check <- qc %>% lapply(
@@ -78,14 +84,15 @@ lapply(sex_check, function(df) {
 
 ``` {r plot-sex}
 lapply(1:length(qc), function(i) {
-    png(paste0("plots/qc/minfi_sex_batch_", i, ".png"), width = 300, height = 200)
+    pdf(paste0("plots/qc/minfi_sex_batch_", i, ".pdf"), width = 3.5, height = 2.5)
     p <- GRSet[[i]] %>%
         getSex() %>%
         as_tibble(rownames = "id") %>%
-        mutate(annotation = ifelse(xMed < 11.6 & yMed < 11, id, "")) %>%
+        merge(samplesheet, by.x = "id", by.y = "minfi_samplename") %>%
+        mutate(annotation = ifelse(xMed < 11.6 & yMed < 11, Sample_Name, "")) %>%
         ggplot(aes(x = xMed, y = yMed, color = predictedSex)) +
         geom_point() +
-        geom_text(aes(label = annotation), vjust = -1) +
+        geom_text(aes(label = annotation), hjust = -0.1, vjust = -0.1) +
         theme_minimal() +
         ggtitle(paste("Batch", i))
     print(p)
@@ -93,13 +100,99 @@ lapply(1:length(qc), function(i) {
 })
 ```
 
-Now we extract the ~60 SNPs on the EPIC array that are used to check for sample swaps.
-``` {r extract-snps}
-library(IlluminaHumanMethylationEPICmanifest)
-data(IlluminaHumanMethylationEPICmanifest)
-getProbeInfo(IlluminaHumanMethylationEPICmanifest, type = "SnpI")
-getProbeInfo(IlluminaHumanMethylationEPICmanifest, type = "SnpII")
+``` {r samplesheet}
+samplesheet <- read.csv("assets/annotated_samplesheet.csv")
+samplesheet$minfi_samplename <- paste(
+    samplesheet$Sentrix_ID, samplesheet$Sentrix_Position,
+    sep = "_"
+)
 
-RGSet %>%
-    lapply(getSnpInfo)
+samplesheet$stripped_sample_name <- samplesheet$Sample_Name %>%
+    str_replace_all(" ", "") %>%
+    str_replace_all("-", "") %>%
+    str_replace_all("L", "")
+samplesheet <- samplesheet %>%
+    merge(
+        read.csv("assets/UCL_PatientBackground- added May 2024_KR_MM.csv") %>%
+            mutate(
+                stripped_sample_name = SampleID %>%
+                    str_replace_all(" ", "") %>%
+                    str_replace_all("-", "") %>%
+                    str_replace_all("\\(FI\\)", "") %>%
+                    str_replace_all("L", "")
+            ) %>%
+            select(c(
+                "stripped_sample_name", "Sex", "Age_at_intervention",
+                "disease", "Chemo.Radio"
+            )),
+        by = "stripped_sample_name"
+    ) %>%
+    select(-stripped_sample_name) %>%
+    mutate( # if '16' in Sample_Name, add on the Batch; otherwise leave
+        annotated_sample_name = ifelse(
+            str_detect(Sample_Name, "16"), paste(Sample_Name, batch), Sample_Name
+        )
+    )
+```
+
+``` {r plot-detp}
+detp <- RGSet %>%
+    do.call(combine, .) %>%
+    detectionP() %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "Probe") %>%
+    pivot_longer(cols = -Probe, names_to = "Sample", values_to = "Detection.P") %>%
+    merge(samplesheet, by.x = "Sample", by.y = "minfi_samplename")
+
+detp_non_zero <- detp %>%
+    filter(Detection.P > 0) %>%
+    mutate(
+        log_Detection.P = log10(Detection.P)
+    )
+
+sample_medians <- detp_non_zero %>%
+    group_by(annotated_sample_name) %>%
+    summarize(median_log_Detection_P = median(log_Detection.P)) %>%
+    arrange(median_log_Detection_P) %>%
+    mutate(annotated_sample_name = factor(
+        annotated_sample_name,
+        levels = annotated_sample_name
+    ))
+
+(
+    ggplot(detp_non_zero, aes(
+        x = factor(
+            annotated_sample_name,
+            levels = sample_medians$annotated_sample_name
+        ),
+        y = log_Detection.P
+    )) +
+        geom_boxplot() +
+        ggtitle("Detection P values") +
+        xlab("Sample") +
+        ylab("log10(Detection P)") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        geom_hline(yintercept = log10(0.05), linetype = "dashed")
+) %>%
+    ggsave("plots/det_p.png", ., width = 3.5, height = 3.5)
+
+# plot the fraction of probes with detection P > 0.05 within each Sample
+(
+    detp %>%
+        group_by(annotated_sample_name) %>%
+        summarize(failed_detection_count = sum(Detection.P > 0.05)) %>%
+        ggplot(aes(
+            x = factor(
+                annotated_sample_name,
+                levels = sample_medians$annotated_sample_name
+            ),
+            y = failed_detection_count
+        )) +
+        geom_bar(stat = "identity") +
+        ggtitle("Failed probes (Detection P > 0.05)") +
+        xlab("Sample") +
+        ylab("Failed probe count") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1))
+) %>%
+    ggsave("plots/det_p_005.png", ., width = 3.5, height = 3.5)
 ```
