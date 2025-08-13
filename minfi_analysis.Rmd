@@ -312,6 +312,61 @@ for (beta_df_output_dir in list(
 ```
 
 
+As an alternative way of looking at the beta values, go for a heatmap.
+``` {r heatmap}
+if (!dir.exists("plots/heatmap")) {
+    dir.create("plots/heatmap", recursive = TRUE)
+}
+lapply(c("unfiltered", "filtered"), function(pca_type) {
+    colnames(high_variance_beta[[pca_type]]) <- samplesheet[
+        match(colnames(high_variance_beta[[pca_type]]), samplesheet$minfi_samplename),
+        "Sample_Name"
+    ]
+    colour_mapping <- c(
+        "CC" = "red", "CG" = "blue", "GG" = "green",
+        "CT" = "blue", "TT" = "green"
+    )
+
+    png(paste0("plots/heatmap/", pca_type, ".png"), width = 600, height = 400)
+    Heatmap(
+        t(high_variance_beta[[pca_type]]),
+        name = "beta",
+        show_column_names = FALSE,
+        column_dend_height = unit(2, "cm"),
+        row_dend_width = unit(2, "cm"),
+        left_annotation = rowAnnotation(
+            df = samplesheet[
+                match(colnames(high_variance_beta[[pca_type]]), samplesheet$Sample_Name),
+                SNP_names
+            ],
+            col = list(
+                PNPLA3 = colour_mapping, TM6SF2 = colour_mapping,
+                TMC4 = colour_mapping, HSD17B13 = colour_mapping
+            ),
+            na_col = "grey"
+        )
+    ) %>%
+        draw()
+    dev.off()
+})
+```
+
+
+``` {r heatmap-legend}
+# now save a png of a legend for CC,CG,GG and for CC,CT,TT
+png(paste0("plots/heatmap/legend_GT.png"), width = 230, height = 280)
+par(mar = c(0, 0, 0, 0))
+plot(1, type = "n", axes = FALSE, xlab = "", ylab = "")
+legend(
+    "center",
+    legend = c("CC", "CG/CT", "GG/TT", "NA"),
+    fill = c("red", "blue", "green", "grey"),
+    title = "Genotype", cex = 3
+)
+dev.off()
+```
+
+
 Now we run a targeted meQTL analysis on the four SNPs of interest.
 ``` {r meQTL-analysis}
 comparison_group_memberships <- samplesheet %>%
