@@ -3,6 +3,7 @@ library(tidyverse)
 library(magrittr)
 library(ggrepel)
 library(reshape2)
+library(ComplexHeatmap)
 
 if (!requireNamespace("minfi", quietly = TRUE)) {
     if (!requireNamespace("BiocManager", quietly = TRUE)) {
@@ -138,7 +139,18 @@ message(paste0(
 ``` {r pca}
 # first filter for only the top 500 most variable probes
 n_high_variance_probes <- 500
-# make a new list with unfiltered and filtered, each a df with columns probe, variance_rank
+
+outlier_minfi_samplenames <- c(
+    "206053660012_R08C01", "206693200099_R08C01", "206053660068_R07C01"
+)
+beta_without_outliers <- lapply(
+    c(unfiltered = "unfiltered", filtered = "filtered"),
+    function(type) {
+        beta[[type]][, !(colnames(beta[[type]]) %in% outlier_minfi_samplenames)]
+    }
+)
+beta <- beta_without_outliers
+
 variance_ranking <- lapply(
     c(unfiltered = "unfiltered", filtered = "filtered"),
     function(type) {
@@ -527,17 +539,119 @@ comparison_names <- data.frame(
 )
 comparison_names %>% write_csv("meqtl_results/comparison_names.csv")
 meqtl_results %>%
+    rename_with(~ paste0("probe_", .), starts_with("start")) %>%
+    rename_with(~ paste0("probe_", .), starts_with("end")) %>%
     filter(Holm_p_value < 0.05) %>%
     mutate(
         comparison_name = factor(comparison, levels = comparison_names$comparison) %>%
             as.character() %>%
-            factor(levels = comparison_names$comparison, labels = comparison_names$name)
+            factor(
+                levels = comparison_names$comparison,
+                labels = comparison_names$name
+            )
     ) %>%
-    merge(
+    left_join(
         gene_annotations[
-            , c("probe", "ensembl_gene_id", "hgnc_symbol", "entrezgene_id")
-        ],
-        by = "probe", all.x = TRUE
+            , c(
+                "probe", "ensembl_gene_id", "hgnc_symbol",
+                "entrezgene_id", "start_position", "end_position"
+            )
+        ] %>%
+            rename_with(~ paste0("gene_", .), starts_with("start")) %>%
+            rename_with(~ paste0("gene_", .), starts_with("end")),
+        by = "probe"
     ) %>%
     write_csv("meqtl_results/significant_results.csv")
+```
+
+Final bit, let's plot the beta value for each significant result, with the gene on the
+x axis and the beta value on the y axis.
+``` {r plot-significant-results}
+significant_results <- read.csv("meqtl_results/significant_results.csv")
+significant_results %>%
+    merge(
+        beta$filtered %>%
+            melt(varnames = c("probe", "sample"), value.name = "beta_value"),
+        by = "probe"
+    ) %>%
+    dplyr::select(
+        probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
+    ) %>%
+    merge(
+        comparison_group_memberships,
+        how = "left",
+        by.y = c("minfi_samplename", "comparison"), by.x = c("sample", "comparison")
+    ) %>%
+    mutate(
+        genotype = ifelse(
+            group == 0, # then extract the first genotype
+            # split on _, take the second, then split on v and take the first
+            comparison_name %>%
+                str_split("_") %>%
+                map_chr(-1) %>%
+                str_split("v") %>%
+                map_chr(1),
+            comparison_name %>%
+                str_split("_") %>%
+                map_chr(-1) %>%
+                str_split("v") %>%
+                map_chr(2)
+        ),
+        annotated_probe = paste0(
+            probe, " (",
+            ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
+        )
+    ) %>%
+    ggplot(aes(x = genotype, y = beta_value)) +
+    geom_point() +
+    geom_jitter(width = 0.2, height = 0) +
+    facet_wrap(~ comparison_name + annotated_probe, scales = "free_x", ncol = 5) +
+    ylim(0, 1)
+ggsave("plots/meqtl/significant_result_beta.pdf", width = 9.5, height = 5)
+```
+
+Similar to the last plot, but include all values for the genotype.
+Separate facet for each SNP-probe pair which has any significant results. (Eg include 
+(TM6, cg02534048) because it has significant results for TM6_CCvCT). Now x-axis should
+be CC,CT,TT for TM6, and so on.
+``` {r plot-significant-results-all}
+significant_results %>%
+    merge(
+        beta$filtered %>%
+            melt(varnames = c("probe", "sample"), value.name = "beta_value"),
+        by = "probe"
+    ) %>%
+    dplyr::select(
+        probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
+    ) %>%
+    mutate(
+        relevant_SNP = ifelse(
+            grepl("TMC_PNP", comparison_name),
+            NA,
+            comparison_name %>%
+                str_extract("PNP|TMC|TM6|HSD")
+        )
+    ) %>%
+    merge(
+        samplesheet %>% # add the SNP genotype to the data
+            dplyr::select(all_of(c("minfi_samplename", SNP_names))) %>%
+            pivot_longer(cols = -minfi_samplename, names_to = "SNP", values_to = "genotype") %>%
+            mutate(
+                abbreviated_SNP = str_extract(SNP, "PNP|TMC|TM6|HSD")
+            ),
+        by.x = c("sample", "relevant_SNP"),
+        by.y = c("minfi_samplename", "abbreviated_SNP")
+    ) %>%
+    mutate(
+        annotated_probe = paste0(
+            probe, " (",
+            ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
+        )
+    ) %>%
+    ggplot(aes(x = genotype, y = beta_value)) +
+    geom_point() +
+    geom_jitter(width = 0.2, height = 0) +
+    facet_wrap(~ SNP + annotated_probe, scales = "free_x", ncol = 5) +
+    ylim(0, 1)
+ggsave("plots/meqtl/significant_result_beta_all.pdf", width = 8, height = 5, create.dir = TRUE)
 ```
