@@ -1,5 +1,11 @@
 # Plotting results of targeted meQTL analysis
 
+``` {r setup, include=FALSE}
+library(tidyverse)
+library(UpSetR)
+library(ggrepel)
+```
+
 Read in the data:
 ``` {r read-data}
 meqtl_results <- read.csv("meqtl_results/targeted_meQTL.csv")
@@ -101,7 +107,31 @@ ggplot(
     ylab("#differentially methylated CpGs") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     scale_fill_manual(
-        values = c("Hypermethylated" = "blue", "Hypomethylated" = "red")
+        values = c("Hypermethylated" = "red", "Hypomethylated" = "blue")
     )
-ggsave("plots/meqtl/barplot.png", width = 4, height = 4)
+ggsave("plots/meqtl/barplot.pdf", width = 4, height = 4)
+```
+
+Finally, an upSet plot of overlapping significant results between comparisons:
+``` {r upset-plot}
+significant_results_wide <- significant_results %>%
+    select(probe, comparison_name) %>%
+    distinct() %>%
+    mutate(present = as.numeric(1)) %>%
+    pivot_wider(
+        names_from = comparison_name, values_from = present, values_fill = 0
+    )
+
+significant_results_matrix <- significant_results_wide %>% 
+    as.data.frame() %>%
+    column_to_rownames(var = "probe")
+
+pdf("plots/meqtl/upset.pdf", width = 8, height = 5, onefile = FALSE)
+upset(
+    significant_results_matrix,
+    nsets = ncol(significant_results_matrix),
+    mainbar.y.label = "Significant DMPs",
+    sets.x.label = "DMPs per Comparison"
+)
+dev.off()
 ```
