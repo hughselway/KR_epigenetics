@@ -10,43 +10,43 @@ library(minfi)
 
 ``` {r load_data}
 targets <- list(
-    read.metharray.sheet("minfi_analysis/Batch_1"),
-    read.metharray.sheet("minfi_analysis/Batch_2")
+  read.metharray.sheet("minfi_analysis/Batch_1"),
+  read.metharray.sheet("minfi_analysis/Batch_2")
 )
 RGSets <- targets %>%
-    lapply(function(t) read.metharray.exp(targets = t, extended = TRUE))
+  lapply(function(t) read.metharray.exp(targets = t, extended = TRUE))
 MSet <- RGSets %>%
-    lapply(preprocessIllumina)
+  lapply(preprocessIllumina)
 unfiltered_probe_count <- MSet[[1]] %>%
-    getBeta() %>%
-    nrow()
+  getBeta() %>%
+  nrow()
 beta_by_batch_unfiltered <- MSet %>%
-    lapply(getBeta, type = "Illumina")
+  lapply(getBeta, type = "Illumina")
 beta_by_batch_filtered <- MSet %>%
-    lapply(dropMethylationLoci) %>% # filter out all but CpG probes
-    lapply(getBeta, type = "Illumina")
+  lapply(dropMethylationLoci) %>% # filter out all but CpG probes
+  lapply(getBeta, type = "Illumina")
 CpG_probe_count <- nrow(beta_by_batch_filtered[[1]])
 message(paste0(
-    "dropMethylationLoci: ", unfiltered_probe_count, " -> ", CpG_probe_count,
-    " probes (", unfiltered_probe_count - CpG_probe_count, " removed)"
+  "dropMethylationLoci: ", unfiltered_probe_count, " -> ", CpG_probe_count,
+  " probes (", unfiltered_probe_count - CpG_probe_count, " removed)"
 ))
 
 
 same_row_names <- all(sapply(
-    beta_by_batch_unfiltered,
-    function(x) all.equal(rownames(x), rownames(beta_by_batch_unfiltered[[1]]))
+  beta_by_batch_unfiltered,
+  function(x) all.equal(rownames(x), rownames(beta_by_batch_unfiltered[[1]]))
 )) && all(sapply(
-    beta_by_batch_filtered,
-    function(x) all.equal(rownames(x), rownames(beta_by_batch_filtered[[1]]))
+  beta_by_batch_filtered,
+  function(x) all.equal(rownames(x), rownames(beta_by_batch_filtered[[1]]))
 ))
 if (same_row_names) {
-    # Concatenate the matrices
-    beta <- list(
-        unfiltered = do.call(cbind, beta_by_batch_unfiltered),
-        filtered = do.call(cbind, beta_by_batch_filtered)
-    )
+  # Concatenate the matrices
+  beta <- list(
+    unfiltered = do.call(cbind, beta_by_batch_unfiltered),
+    filtered = do.call(cbind, beta_by_batch_filtered)
+  )
 } else {
-    message("The row names are not the same in each matrix.")
+  message("The row names are not the same in each matrix.")
 }
 ```
 
@@ -54,78 +54,78 @@ if (same_row_names) {
 # Filter out probes with detection p-value > 0.01 in at least 5% of samples
 sample_count <- dim(beta$unfiltered)[2]
 failed_detection_p_value <- RGSets %>%
-    do.call(combine, .) %>%
-    detectionP() %>%
-    as.data.frame() %>%
-    filter(apply(., 1, function(x) {
-        sum(x >= 0.01) >= 0.05 * sample_count
-    })) %>%
-    rownames()
+  do.call(combine, .) %>%
+  detectionP() %>%
+  as.data.frame() %>%
+  filter(apply(., 1, function(x) {
+    sum(x >= 0.01) >= 0.05 * sample_count
+  })) %>%
+  rownames()
 beta$filtered <- beta$filtered[
-    !(rownames(beta$filtered) %in% failed_detection_p_value),
+  !(rownames(beta$filtered) %in% failed_detection_p_value),
 ]
 detected_probe_count <- nrow(beta$filtered)
 message(paste0(
-    "Detection p-value: ", CpG_probe_count, " -> ", detected_probe_count,
-    " probes (", CpG_probe_count - detected_probe_count, " removed)"
+  "Detection p-value: ", CpG_probe_count, " -> ", detected_probe_count,
+  " probes (", CpG_probe_count - detected_probe_count, " removed)"
 ))
 
 # Filter out probes with beadcount < 3 in at least 5% of samples
 failed_beadcount <- RGSets %>%
-    do.call(combine, .) %>%
-    getNBeads() %>%
-    as.data.frame() %>%
-    filter(apply(., 1, function(x) {
-        sum(x < 3) >= 0.05 * sample_count
-    })) %>%
-    rownames() %>%
-    paste0("cg", .)
+  do.call(combine, .) %>%
+  getNBeads() %>%
+  as.data.frame() %>%
+  filter(apply(., 1, function(x) {
+    sum(x < 3) >= 0.05 * sample_count
+  })) %>%
+  rownames() %>%
+  paste0("cg", .)
 beta$filtered <- beta$filtered[
-    !(rownames(beta$filtered) %in% failed_beadcount),
+  !(rownames(beta$filtered) %in% failed_beadcount),
 ]
 beadcount_filtered_probe_count <- nrow(beta$filtered)
 message(paste0(
-    "Bead count: ", detected_probe_count, " -> ", beadcount_filtered_probe_count,
-    " probes (", detected_probe_count - beadcount_filtered_probe_count, " removed)"
+  "Bead count: ", detected_probe_count, " -> ", beadcount_filtered_probe_count,
+  " probes (", detected_probe_count - beadcount_filtered_probe_count, " removed)"
 ))
 
 
 probe_locations <- MSet[[1]] %>%
-    mapToGenome() %>%
-    getLocations() %>%
-    as.data.frame() %>%
-    rownames_to_column("probe") %>%
-    as_tibble() %>%
-    mutate(sex_chrom = grepl("chrX|chrY", seqnames)) %>%
-    merge(
-        read_tsv("assets/Zhou_EPIC.anno.GRCh38.tsv", show_col_types = FALSE) %>%
-            select(probeID, MASK.snp5.common),
-        by.x = "probe", by.y = "probeID"
-    )
+  mapToGenome() %>%
+  getLocations() %>%
+  as.data.frame() %>%
+  rownames_to_column("probe") %>%
+  as_tibble() %>%
+  mutate(sex_chrom = grepl("chrX|chrY", seqnames)) %>%
+  merge(
+    read_tsv("assets/Zhou_EPIC.anno.GRCh38.tsv", show_col_types = FALSE) %>%
+      select(probeID, MASK.snp5.common),
+    by.x = "probe", by.y = "probeID"
+  )
 
 # Filter out probes with common SNPs in Zhou 2017 list
 beta$filtered <- beta$filtered[
-    rownames(beta$filtered) %in%
-        probe_locations$probe[!probe_locations$MASK.snp5.common],
+  rownames(beta$filtered) %in%
+    probe_locations$probe[!probe_locations$MASK.snp5.common],
 ]
 post_zhou_filter_n_probes <- nrow(beta$filtered)
 message(paste0(
-    "Common SNPs: ", beadcount_filtered_probe_count, " -> ", post_zhou_filter_n_probes,
-    " probes (", beadcount_filtered_probe_count - post_zhou_filter_n_probes, " removed)"
+  "Common SNPs: ", beadcount_filtered_probe_count, " -> ", post_zhou_filter_n_probes,
+  " probes (", beadcount_filtered_probe_count - post_zhou_filter_n_probes, " removed)"
 ))
 # Filter out reads mapping to sex chromosomes
 beta$filtered <- beta$filtered[
-    rownames(beta$filtered) %in% probe_locations$probe[!probe_locations$sex_chrom],
+  rownames(beta$filtered) %in% probe_locations$probe[!probe_locations$sex_chrom],
 ]
 post_sex_filter_n_probes <- nrow(beta$filtered)
 message(paste0(
-    "Sex chromosomes: ", post_zhou_filter_n_probes, " -> ", post_sex_filter_n_probes,
-    " probes (", post_zhou_filter_n_probes - post_sex_filter_n_probes, " removed)"
+  "Sex chromosomes: ", post_zhou_filter_n_probes, " -> ", post_sex_filter_n_probes,
+  " probes (", post_zhou_filter_n_probes - post_sex_filter_n_probes, " removed)"
 ))
 
 message(paste0(
-    "Filtering complete: ", nrow(beta$unfiltered), " -> ", nrow(beta$filtered),
-    " probes (", nrow(beta$unfiltered) - nrow(beta$filtered), " removed)"
+  "Filtering complete: ", nrow(beta$unfiltered), " -> ", nrow(beta$filtered),
+  " probes (", nrow(beta$unfiltered) - nrow(beta$filtered), " removed)"
 ))
 ```
 
@@ -134,110 +134,110 @@ message(paste0(
 n_high_variance_probes <- 500
 
 variance_ranking <- lapply(
-    c(unfiltered = "unfiltered", filtered = "filtered"),
-    function(type) {
-        beta[[type]] %>%
-            melt(varnames = c("probe", "sample"), value.name = "beta_value") %>%
-            group_by(probe) %>%
-            summarise(variance = var(beta_value)) %>%
-            arrange(desc(variance)) %>%
-            mutate(rank = row_number()) %>%
-            filter(rank <= n_high_variance_probes) %>%
-            select(probe, rank)
-    }
+  c(unfiltered = "unfiltered", filtered = "filtered"),
+  function(type) {
+    beta[[type]] %>%
+      melt(varnames = c("probe", "sample"), value.name = "beta_value") %>%
+      group_by(probe) %>%
+      summarise(variance = var(beta_value)) %>%
+      arrange(desc(variance)) %>%
+      mutate(rank = row_number()) %>%
+      filter(rank <= n_high_variance_probes) %>%
+      select(probe, rank)
+  }
 )
 
 high_variance_beta <- lapply(
-    c(unfiltered = "unfiltered", filtered = "filtered"),
-    function(type) {
-        beta[[type]][variance_ranking[[type]]$probe, ]
-    }
+  c(unfiltered = "unfiltered", filtered = "filtered"),
+  function(type) {
+    beta[[type]][variance_ranking[[type]]$probe, ]
+  }
 )
 pca <- list(
-    unfiltered = prcomp(t(high_variance_beta$unfiltered)),
-    filtered = prcomp(t(high_variance_beta$filtered))
+  unfiltered = prcomp(t(high_variance_beta$unfiltered)),
+  filtered = prcomp(t(high_variance_beta$filtered))
 )
 
 # plot the percentage of variance explained by each PC
 pca_var <- list()
 for (pca_type in c("unfiltered", "filtered")) {
-    pca_var[[pca_type]] <- data.frame(
-        PC = factor(
-            paste("PC", 1:ncol(pca[[pca_type]]$x), sep = ""),
-            levels = paste("PC", 1:ncol(pca[[pca_type]]$x), sep = "")
-        ),
-        variance_explained = pca[[pca_type]]$sdev^2 / sum(pca[[pca_type]]$sdev^2)
-    )
-    ggplot(pca_var[[pca_type]], aes(x = PC, y = variance_explained)) +
-        geom_bar(stat = "identity") +
-        ylab("Variance explained") +
-        xlab("Principal component") +
-        ggtitle(paste("Variance explained by each PC (", pca_type, ")", sep = "")) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1))
-    ggsave(
-        paste0("plots/pca/", pca_type, "/variance_explained.pdf"),
-        width = 4, height = 3, create.dir = TRUE
-    )
+  pca_var[[pca_type]] <- data.frame(
+    PC = factor(
+      paste("PC", 1:ncol(pca[[pca_type]]$x), sep = ""),
+      levels = paste("PC", 1:ncol(pca[[pca_type]]$x), sep = "")
+    ),
+    variance_explained = pca[[pca_type]]$sdev^2 / sum(pca[[pca_type]]$sdev^2)
+  )
+  ggplot(pca_var[[pca_type]], aes(x = PC, y = variance_explained)) +
+    geom_bar(stat = "identity") +
+    ylab("Variance explained") +
+    xlab("Principal component") +
+    ggtitle(paste("Variance explained by each PC (", pca_type, ")", sep = "")) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  ggsave(
+    paste0("plots/pca/", pca_type, "/variance_explained.pdf"),
+    width = 4, height = 3, create.dir = TRUE
+  )
 }
 ```
 
 ``` {r annotate-pca}
 pca_df <- list(
-    unfiltered = as.data.frame(pca$unfiltered$x),
-    filtered = as.data.frame(pca$filtered$x)
+  unfiltered = as.data.frame(pca$unfiltered$x),
+  filtered = as.data.frame(pca$filtered$x)
 )
 
 samplesheet <- read.csv("assets/annotated_samplesheet.csv")
 samplesheet$minfi_samplename <-
-    paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
+  paste(samplesheet$Sentrix_ID, samplesheet$Sentrix_Position, sep = "_")
 
 samplesheet$stripped_sample_name <- samplesheet$Sample_Name %>%
-    str_replace_all(" ", "") %>%
-    str_replace_all("-", "") %>%
-    str_replace_all("L", "")
+  str_replace_all(" ", "") %>%
+  str_replace_all("-", "") %>%
+  str_replace_all("L", "")
 samplesheet <- samplesheet %>%
-    merge(
-        read.csv("assets/UCL_PatientBackground- added May 2024_KR_MM.csv") %>%
-            mutate(
-                stripped_sample_name = SampleID %>%
-                    str_replace_all(" ", "") %>%
-                    str_replace_all("-", "") %>%
-                    str_replace_all("\\(FI\\)", "") %>%
-                    str_replace_all("L", "")
-            ) %>%
-            select(c(
-                "stripped_sample_name", "Sex", "Age_at_intervention",
-                "disease", "Chemo.Radio"
-            )),
-        by = "stripped_sample_name"
-    ) %>%
-    merge(
-        read.csv("assets/HSC key.csv") %>%
-            mutate(
-                stripped_sample_name = SampleID %>%
-                    str_replace_all(" ", "") %>%
-                    str_replace_all("-", "") %>%
-                    str_replace_all("\\(FI\\)", "") %>%
-                    str_replace_all("L", "")
-            ),
-        by = "stripped_sample_name"
-    ) %>%
-    select(-stripped_sample_name)
+  merge(
+    read.csv("assets/UCL_PatientBackground- added May 2024_KR_MM.csv") %>%
+      mutate(
+        stripped_sample_name = SampleID %>%
+          str_replace_all(" ", "") %>%
+          str_replace_all("-", "") %>%
+          str_replace_all("\\(FI\\)", "") %>%
+          str_replace_all("L", "")
+      ) %>%
+      select(c(
+        "stripped_sample_name", "Sex", "Age_at_intervention",
+        "disease", "Chemo.Radio"
+      )),
+    by = "stripped_sample_name"
+  ) %>%
+  merge(
+    read.csv("assets/HSC key.csv") %>%
+      mutate(
+        stripped_sample_name = SampleID %>%
+          str_replace_all(" ", "") %>%
+          str_replace_all("-", "") %>%
+          str_replace_all("\\(FI\\)", "") %>%
+          str_replace_all("L", "")
+      ),
+    by = "stripped_sample_name"
+  ) %>%
+  select(-stripped_sample_name)
 
 for (pca_type in c("unfiltered", "filtered")) {
-    pca_df[[pca_type]]$sample <- rownames(pca_df[[pca_type]])
-    pca_df[[pca_type]] <- merge(
-        pca_df[[pca_type]], samplesheet,
-        by.x = "sample", by.y = "minfi_samplename"
-    )
+  pca_df[[pca_type]]$sample <- rownames(pca_df[[pca_type]])
+  pca_df[[pca_type]] <- merge(
+    pca_df[[pca_type]], samplesheet,
+    by.x = "sample", by.y = "minfi_samplename"
+  )
 }
 # save pca
 if (!dir.exists("intermediate_results")) {
-    dir.create("intermediate_results")
+  dir.create("intermediate_results")
 }
 for (pca_type in c("unfiltered", "filtered")) {
-    pca_df[[pca_type]] %>%
-        write_csv(paste0("intermediate_results/pca_", pca_type, ".csv"))
+  pca_df[[pca_type]] %>%
+    write_csv(paste0("intermediate_results/pca_", pca_type, ".csv"))
 }
 ```
 
@@ -246,77 +246,77 @@ for (pca_type in c("unfiltered", "filtered")) {
 SNP_names <- c("PNPLA3", "TM6SF2", "TMC4", "HSD17B13")
 
 for (pca_type in c("unfiltered", "filtered")) {
-    pca_dir <- paste0("plots/pca/", pca_type)
-    if (!dir.exists(pca_dir)) {
-        dir.create(pca_dir)
-    }
-    ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
-        geom_point()
-    ggsave(paste0(pca_dir, "/by_batch.pdf"), width = 5, height = 3)
+  pca_dir <- paste0("plots/pca/", pca_type)
+  if (!dir.exists(pca_dir)) {
+    dir.create(pca_dir)
+  }
+  ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
+    geom_point()
+  ggsave(paste0(pca_dir, "/by_batch.pdf"), width = 5, height = 3)
 
-    ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = RNA_predicted_sex)) +
-        geom_point()
-    ggsave(paste0(pca_dir, "/by_sex.pdf"), width = 5, height = 3)
+  ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = RNA_predicted_sex)) +
+    geom_point()
+  ggsave(paste0(pca_dir, "/by_sex.pdf"), width = 5, height = 3)
 
-    ggplot(
-        pca_df[[pca_type]],
-        aes(x = PC1, y = PC2, color = batch, shape = RNA_predicted_sex)
-    ) +
-        geom_point()
-    ggsave(paste0(pca_dir, "/by_batch_and_sex.pdf"), width = 5, height = 3)
+  ggplot(
+    pca_df[[pca_type]],
+    aes(x = PC1, y = PC2, color = batch, shape = RNA_predicted_sex)
+  ) +
+    geom_point()
+  ggsave(paste0(pca_dir, "/by_batch_and_sex.pdf"), width = 5, height = 3)
 
-    # sample name annotated
-    ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
-        geom_point() +
-        geom_label_repel(aes(label = paper_key),
-            box.padding = unit(0.35, "lines"),
-            point.padding = unit(0.5, "lines"),
-            segment.color = "grey50"
-        )
-    ggsave(paste0(pca_dir, "/by_batch_annotated.pdf"), width = 5, height = 3)
+  # sample name annotated
+  ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = batch)) +
+    geom_point() +
+    geom_label_repel(aes(label = paper_key),
+      box.padding = unit(0.35, "lines"),
+      point.padding = unit(0.5, "lines"),
+      segment.color = "grey50"
+    )
+  ggsave(paste0(pca_dir, "/by_batch_annotated.pdf"), width = 5, height = 3)
 
 
-    for (snp_name in SNP_names) {
-        ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = get(snp_name))) +
-            geom_point() +
-            geom_label_repel(aes(label = Sample_Name),
-                box.padding = unit(0.35, "lines"),
-                point.padding = unit(0.5, "lines"),
-                segment.color = "grey50"
-            ) + # set the title of the legend to the SNP name
-            scale_color_manual(
-                name = snp_name,
-                values = c("CC" = "red", "CG" = "blue", "GG" = "green")
-            )
-        ggsave(paste0(pca_dir, "/", snp_name, ".pdf"), width = 5, height = 3)
-    }
+  for (snp_name in SNP_names) {
+    ggplot(pca_df[[pca_type]], aes(x = PC1, y = PC2, color = get(snp_name))) +
+      geom_point() +
+      geom_label_repel(aes(label = Sample_Name),
+        box.padding = unit(0.35, "lines"),
+        point.padding = unit(0.5, "lines"),
+        segment.color = "grey50"
+      ) + # set the title of the legend to the SNP name
+      scale_color_manual(
+        name = snp_name,
+        values = c("CC" = "red", "CG" = "blue", "GG" = "green")
+      )
+    ggsave(paste0(pca_dir, "/", snp_name, ".pdf"), width = 5, height = 3)
+  }
 }
 ```
 
 ``` {r pca-correlations}
 library(ChAMP)
 for (beta_df_output_dir in list(
-    list(beta$unfiltered, "unfiltered/champ/all_probes"),
-    list(beta$filtered, "filtered/champ/all_probes"),
-    list(high_variance_beta$unfiltered, "unfiltered/champ/top_500_probes"),
-    list(high_variance_beta$filtered, "filtered/champ/top_500_probes")
+  list(beta$unfiltered, "unfiltered/champ/all_probes"),
+  list(beta$filtered, "filtered/champ/all_probes"),
+  list(high_variance_beta$unfiltered, "unfiltered/champ/top_500_probes"),
+  list(high_variance_beta$filtered, "filtered/champ/top_500_probes")
 )) {
-    beta_df <- beta_df_output_dir[[1]]
-    output_dir <- beta_df_output_dir[[2]]
-    if (!dir.exists(paste0("plots/pca/", output_dir))) {
-        dir.create(paste0("plots/pca/", output_dir), recursive = TRUE)
-    }
-    champ.SVD(
-        as.data.frame(beta_df),
-        pd = samplesheet[
-            match(colnames(beta_df), samplesheet$minfi_samplename),
-            c(
-                "Sample_Well", "Sentrix_ID", "Sentrix_Position", "batch",
-                "Sex", "Age_at_intervention", "disease", "Chemo.Radio"
-            )
-        ],
-        resultsDir = paste0("plots/pca/", output_dir, "/")
-    )
+  beta_df <- beta_df_output_dir[[1]]
+  output_dir <- beta_df_output_dir[[2]]
+  if (!dir.exists(paste0("plots/pca/", output_dir))) {
+    dir.create(paste0("plots/pca/", output_dir), recursive = TRUE)
+  }
+  champ.SVD(
+    as.data.frame(beta_df),
+    pd = samplesheet[
+      match(colnames(beta_df), samplesheet$minfi_samplename),
+      c(
+        "Sample_Well", "Sentrix_ID", "Sentrix_Position", "batch",
+        "Sex", "Age_at_intervention", "disease", "Chemo.Radio"
+      )
+    ],
+    resultsDir = paste0("plots/pca/", output_dir, "/")
+  )
 }
 ```
 
@@ -325,39 +325,39 @@ As an alternative way of looking at the beta values, now for a heatmap over all
 CpGs (columns) and samples (rows).
 ``` {r heatmap}
 if (!dir.exists("plots/heatmap")) {
-    dir.create("plots/heatmap", recursive = TRUE)
+  dir.create("plots/heatmap", recursive = TRUE)
 }
 lapply(c("unfiltered", "filtered"), function(pca_type) {
-    colnames(high_variance_beta[[pca_type]]) <- samplesheet[
-        match(colnames(high_variance_beta[[pca_type]]), samplesheet$minfi_samplename),
-        "paper_key"
-    ]
-    colour_mapping <- c(
-        "CC" = "red", "CG" = "blue", "GG" = "green",
-        "CT" = "blue", "TT" = "green"
-    )
+  colnames(high_variance_beta[[pca_type]]) <- samplesheet[
+    match(colnames(high_variance_beta[[pca_type]]), samplesheet$minfi_samplename),
+    "paper_key"
+  ]
+  colour_mapping <- c(
+    "CC" = "red", "CG" = "blue", "GG" = "green",
+    "CT" = "blue", "TT" = "green"
+  )
 
-    pdf(paste0("plots/heatmap/", pca_type, ".pdf"), width = 8.5, height = 5.5)
-    Heatmap(
-        t(high_variance_beta[[pca_type]]),
-        name = "beta",
-        show_column_names = FALSE,
-        column_dend_height = unit(2, "cm"),
-        row_dend_width = unit(2, "cm"),
-        left_annotation = rowAnnotation(
-            df = samplesheet[
-                match(colnames(high_variance_beta[[pca_type]]), samplesheet$paper_key),
-                SNP_names
-            ],
-            col = list(
-                PNPLA3 = colour_mapping, TM6SF2 = colour_mapping,
-                TMC4 = colour_mapping, HSD17B13 = colour_mapping
-            ),
-            na_col = "grey"
-        )
-    ) %>%
-        draw()
-    dev.off()
+  pdf(paste0("plots/heatmap/", pca_type, ".pdf"), width = 8.5, height = 5.5)
+  Heatmap(
+    t(high_variance_beta[[pca_type]]),
+    name = "beta",
+    show_column_names = FALSE,
+    column_dend_height = unit(2, "cm"),
+    row_dend_width = unit(2, "cm"),
+    left_annotation = rowAnnotation(
+      df = samplesheet[
+        match(colnames(high_variance_beta[[pca_type]]), samplesheet$paper_key),
+        SNP_names
+      ],
+      col = list(
+        PNPLA3 = colour_mapping, TM6SF2 = colour_mapping,
+        TMC4 = colour_mapping, HSD17B13 = colour_mapping
+      ),
+      na_col = "grey"
+    )
+  ) %>%
+    draw()
+  dev.off()
 })
 ```
 
@@ -366,95 +366,95 @@ Now we run a targeted meQTL analysis on the four SNPs of interest.
 First, we have to filter out the second sample of the repeated HSC16.
 ``` {r filter-repeats}
 samplesheet <- samplesheet %>%
-    filter(!(Sample_Name == "HSC16" & batch == "Batch 2"))
+  filter(!(Sample_Name == "HSC16" & batch == "Batch 2"))
 beta_without_repeats <- lapply(
-    c(unfiltered = "unfiltered", filtered = "filtered"),
-    function(type) {
-        beta[[type]][, colnames(beta[[type]]) %in% samplesheet$minfi_samplename]
-    }
+  c(unfiltered = "unfiltered", filtered = "filtered"),
+  function(type) {
+    beta[[type]][, colnames(beta[[type]]) %in% samplesheet$minfi_samplename]
+  }
 )
 message(paste0(
-    "After removing repeated HSC16: ", ncol(beta_without_repeats$filtered), " samples (",ncol(beta$filtered) - ncol(beta_without_repeats$filtered), " removed)")
-)
+  "After removing repeated HSC16: ", ncol(beta_without_repeats$filtered), " samples (", ncol(beta$filtered) - ncol(beta_without_repeats$filtered), " removed)"
+))
 beta <- beta_without_repeats
 ```
 
 ``` {r meQTL-analysis}
 comparison_group_memberships <- samplesheet %>%
-    select(minfi_samplename, PNPLA3, TM6SF2, TMC4, HSD17B13) %>%
-    mutate(
-        A = ifelse(PNPLA3 == "CC", 0, ifelse(PNPLA3 == "CG", 1, NA)),
-        B = ifelse(PNPLA3 == "CC", 0, ifelse(PNPLA3 == "GG", 1, NA)),
-        C = ifelse(PNPLA3 == "CG", 0, ifelse(PNPLA3 == "GG", 1, NA)),
-        D = ifelse(TM6SF2 == "CC", 0, ifelse(TM6SF2 == "CT", 1, NA)),
-        E = ifelse(TMC4 == "CC", 0, ifelse(TMC4 == "CT", 1, NA)),
-        F = ifelse(TMC4 == "CC", 0, ifelse(TMC4 == "TT", 1, NA)),
-        G = ifelse(TMC4 == "CT", 0, ifelse(TMC4 == "TT", 1, NA)),
-        H = ifelse(HSD17B13 == "CC", 0, ifelse(HSD17B13 == "CG", 1, NA)),
-        I = ifelse(
-            TM6SF2 == "CC" & PNPLA3 == "CC", 0,
-            ifelse(TM6SF2 == "CC" & PNPLA3 == "CG", 1, NA)
-        ),
-        J = ifelse(
-            TM6SF2 == "CC" & PNPLA3 == "CC", 0,
-            ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
-        ),
-        K = ifelse(
-            TM6SF2 == "CC" & PNPLA3 == "CG", 0,
-            ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
-        ),
-        L = ifelse(
-            PNPLA3 == "CC" & TMC4 == "CC", 0,
-            ifelse(PNPLA3 == "CC" & TMC4 == "CT", 1, NA)
-        ),
-        O = ifelse(
-            TMC4 == "CT" & PNPLA3 == "CC", 0,
-            ifelse(TMC4 == "CT" & PNPLA3 == "CG", 1, NA)
-        ),
-        R = ifelse(
-            TM6SF2 == "CC" & TMC4 == "CC", 0,
-            ifelse(TM6SF2 == "CC" & TMC4 == "CT", 1, NA)
-        )
-    ) %>%
-    select(-PNPLA3, -TM6SF2, -TMC4, -HSD17B13) %>%
-    pivot_longer(
-        cols = -minfi_samplename,
-        names_to = "comparison",
-        values_to = "group"
-    ) %>%
-    filter(!is.na(group))
+  select(minfi_samplename, PNPLA3, TM6SF2, TMC4, HSD17B13) %>%
+  mutate(
+    A = ifelse(PNPLA3 == "CC", 0, ifelse(PNPLA3 == "CG", 1, NA)),
+    B = ifelse(PNPLA3 == "CC", 0, ifelse(PNPLA3 == "GG", 1, NA)),
+    C = ifelse(PNPLA3 == "CG", 0, ifelse(PNPLA3 == "GG", 1, NA)),
+    D = ifelse(TM6SF2 == "CC", 0, ifelse(TM6SF2 == "CT", 1, NA)),
+    E = ifelse(TMC4 == "CC", 0, ifelse(TMC4 == "CT", 1, NA)),
+    F = ifelse(TMC4 == "CC", 0, ifelse(TMC4 == "TT", 1, NA)),
+    G = ifelse(TMC4 == "CT", 0, ifelse(TMC4 == "TT", 1, NA)),
+    H = ifelse(HSD17B13 == "CC", 0, ifelse(HSD17B13 == "CG", 1, NA)),
+    I = ifelse(
+      TM6SF2 == "CC" & PNPLA3 == "CC", 0,
+      ifelse(TM6SF2 == "CC" & PNPLA3 == "CG", 1, NA)
+    ),
+    J = ifelse(
+      TM6SF2 == "CC" & PNPLA3 == "CC", 0,
+      ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
+    ),
+    K = ifelse(
+      TM6SF2 == "CC" & PNPLA3 == "CG", 0,
+      ifelse(TM6SF2 == "CC" & PNPLA3 == "GG", 1, NA)
+    ),
+    L = ifelse(
+      PNPLA3 == "CC" & TMC4 == "CC", 0,
+      ifelse(PNPLA3 == "CC" & TMC4 == "CT", 1, NA)
+    ),
+    O = ifelse(
+      TMC4 == "CT" & PNPLA3 == "CC", 0,
+      ifelse(TMC4 == "CT" & PNPLA3 == "CG", 1, NA)
+    ),
+    R = ifelse(
+      TM6SF2 == "CC" & TMC4 == "CC", 0,
+      ifelse(TM6SF2 == "CC" & TMC4 == "CT", 1, NA)
+    )
+  ) %>%
+  select(-PNPLA3, -TM6SF2, -TMC4, -HSD17B13) %>%
+  pivot_longer(
+    cols = -minfi_samplename,
+    names_to = "comparison",
+    values_to = "group"
+  ) %>%
+  filter(!is.na(group))
 
 get_lm_stats <- function(data) {
-    if (length(unique(data$group)) == 1) {
-        return(list(coefficient = NA, p_value = NA))
-    }
-    lm_results <- lm(beta_value ~ group, data = data) %>%
-        summary() %>%
-        use_series(coefficients)
-    list(
-        coefficient = lm_results[2, 1], # Extract the coefficient for the group
-        p_value = lm_results[2, 4] # Extract the p-value for the group
-    )
+  if (length(unique(data$group)) == 1) {
+    return(list(coefficient = NA, p_value = NA))
+  }
+  lm_results <- lm(beta_value ~ group, data = data) %>%
+    summary() %>%
+    use_series(coefficients)
+  list(
+    coefficient = lm_results[2, 1], # Extract the coefficient for the group
+    p_value = lm_results[2, 4] # Extract the p-value for the group
+  )
 }
 
 if (!file.exists("meqtl_results/targeted_meQTL_raw.csv")) {
-    if (!dir.exists("meqtl_results")) {
-        dir.create("meqtl_results")
-    }
-    beta$filtered %>%
-        melt(varnames = c("probe", "sample"), value.name = "beta_value") %>%
-        merge(
-            comparison_group_memberships,
-            by.y = "minfi_samplename",
-            by.x = "sample"
-        ) %>%
-        group_by(probe, comparison) %>%
-        nest() %>%
-        summarise(
-            stats = map(data, get_lm_stats)
-        ) %>%
-        unnest_wider(stats) %>%
-        write_csv("meqtl_results/targeted_meQTL_raw.csv")
+  if (!dir.exists("meqtl_results")) {
+    dir.create("meqtl_results")
+  }
+  beta$filtered %>%
+    melt(varnames = c("probe", "sample"), value.name = "beta_value") %>%
+    merge(
+      comparison_group_memberships,
+      by.y = "minfi_samplename",
+      by.x = "sample"
+    ) %>%
+    group_by(probe, comparison) %>%
+    nest() %>%
+    summarise(
+      stats = map(data, get_lm_stats)
+    ) %>%
+    unnest_wider(stats) %>%
+    write_csv("meqtl_results/targeted_meQTL_raw.csv")
 }
 ```
 
@@ -463,108 +463,108 @@ Now we assess the results of the meQTL analysis, using Holm correction for multi
 testing.
 ``` {r meQTL-results}
 meqtl_results <- read.csv("meqtl_results/targeted_meQTL_raw.csv") %>%
-    mutate(Holm_p_value = p.adjust(p_value, method = "holm")) %>%
-    merge(probe_locations, by = "probe") %>%
-    write_csv("meqtl_results/targeted_meQTL.csv")
+  mutate(Holm_p_value = p.adjust(p_value, method = "holm")) %>%
+  merge(probe_locations, by = "probe") %>%
+  write_csv("meqtl_results/targeted_meQTL.csv")
 ```
 
 Now for each test, print out the number of significant results for each snp.
 
 ``` {r significant-results}
 results_df <- meqtl_results %>%
-    group_by(comparison) %>%
-    summarise(
-        n_significant = sum(Holm_p_value < 0.05, na.rm = TRUE),
-        n_total = n()
-    )
+  group_by(comparison) %>%
+  summarise(
+    n_significant = sum(Holm_p_value < 0.05, na.rm = TRUE),
+    n_total = n()
+  )
 results_df %>%
-    write_csv("meqtl_results/n_significant.csv")
+  write_csv("meqtl_results/n_significant.csv")
 ```
 
 ``` {r add-genes}
 library(biomaRt)
 
 filtered_results <- read.csv("meqtl_results/targeted_meQTL.csv") %>%
-    filter(Holm_p_value < 0.05)
+  filter(Holm_p_value < 0.05)
 
 # Initialize BioMart
 mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
 attributes <- c(
-    "ensembl_gene_id", "start_position", "end_position",
-    "hgnc_symbol", "chromosome_name", "entrezgene_id"
+  "ensembl_gene_id", "start_position", "end_position",
+  "hgnc_symbol", "chromosome_name", "entrezgene_id"
 )
 filters <- c("chromosome_name", "start", "end")
 
 gene_annotations <- lapply(1:nrow(filtered_results), function(i) {
-    row <- filtered_results[i, ]
-    values <- list(
-        chromosome_name = row$seqnames %>% str_replace_all("chr", ""),
-        start = row$start, end = row$end
-    )
-    getBM(
-        attributes = attributes, filters = filters, values = values, mart = mart
-    ) %>%
-        mutate(comparison = row$comparison, probe = row$probe)
+  row <- filtered_results[i, ]
+  values <- list(
+    chromosome_name = row$seqnames %>% str_replace_all("chr", ""),
+    start = row$start, end = row$end
+  )
+  getBM(
+    attributes = attributes, filters = filters, values = values, mart = mart
+  ) %>%
+    mutate(comparison = row$comparison, probe = row$probe)
 }) %>%
-    do.call(rbind, .)
+  do.call(rbind, .)
 
 gene_annotations %>%
-    write.csv("meqtl_results/gene_annotations.csv", row.names = FALSE, quote = FALSE)
+  write.csv("meqtl_results/gene_annotations.csv", row.names = FALSE, quote = FALSE)
 gene_annotations
 ```
 
 ``` {r significant_results}
 comparison_names <- data.frame(
-    comparison = c(
-        "A", "B", "C",
-        "D",
-        "E", "F", "G",
-        "H",
-        "I", "J", "K", 
-        "L",
-        "O",
-        "R"
-    ),
-    name = c(
-        "PNP_CGvCC", "PNP_GGvCC", "PNP_GGvCG",
-        "TM6_CTvCC",
-        "TMC_CTvCC", "TMC_TTvCC", "TMC_TTvCT",
-        "HSD_CGvCC",
-        "TM6_PNP_CC-CGvCC-CC", "TM6_PNP_CC-GGvCC-CC", "TM6_PNP_CC-GGvCC-CG",
-        "PNP_TMC_CC-CTvCC-CC",
-        "TMC_PNP_CT-CGvCT-CC",
-        "TM6_TMC_CC-CTvCC-CC"
-    )
+  comparison = c(
+    "A", "B", "C",
+    "D",
+    "E", "F", "G",
+    "H",
+    "I", "J", "K",
+    "L",
+    "O",
+    "R"
+  ),
+  name = c(
+    "PNP_CGvCC", "PNP_GGvCC", "PNP_GGvCG",
+    "TM6_CTvCC",
+    "TMC_CTvCC", "TMC_TTvCC", "TMC_TTvCT",
+    "HSD_CGvCC",
+    "TM6_PNP_CC-CGvCC-CC", "TM6_PNP_CC-GGvCC-CC", "TM6_PNP_CC-GGvCC-CG",
+    "PNP_TMC_CC-CTvCC-CC",
+    "TMC_PNP_CT-CGvCT-CC",
+    "TM6_TMC_CC-CTvCC-CC"
+  )
 ) %>% mutate(
-    full_name = str_replace_all(name, c(
-        "PNP" = "PNPLA3", "TMC" = "TMC4", "TM6" = "TM6SF2", "HSD" = "HSD17B13"
-    ))
+  full_name = str_replace_all(name, c(
+    "PNP" = "PNPLA3", "TMC" = "TMC4", "TM6" = "TM6SF2", "HSD" = "HSD17B13"
+  ))
 )
 comparison_names %>% write_csv("meqtl_results/comparison_names.csv")
 meqtl_results %>%
-    rename_with(~ paste0("probe_", .), starts_with("start")) %>%
-    rename_with(~ paste0("probe_", .), starts_with("end")) %>%
-    filter(Holm_p_value < 0.05) %>%
-    mutate(
-        comparison_name = factor(comparison, levels = comparison_names$comparison) %>%
-            as.character() %>%
-            factor(
-                levels = comparison_names$comparison,
-                labels = comparison_names$name
-            )
-    ) %>%
-    left_join(
-        gene_annotations[
-            , c(
-                "probe", "ensembl_gene_id", "hgnc_symbol",
-                "entrezgene_id", "start_position", "end_position"
-            )
-        ] %>%
-            rename_with(~ paste0("gene_", .), starts_with("start")) %>%
-            rename_with(~ paste0("gene_", .), starts_with("end")),
-        by = "probe"
-    ) %>%
-    write_csv("meqtl_results/significant_results.csv")
+  rename_with(~ paste0("probe_", .), starts_with("start")) %>%
+  rename_with(~ paste0("probe_", .), starts_with("end")) %>%
+  filter(Holm_p_value < 0.05) %>%
+  mutate(
+    comparison_name = factor(comparison, levels = comparison_names$comparison) %>%
+      as.character() %>%
+      factor(
+        levels = comparison_names$comparison,
+        labels = comparison_names$name
+      )
+  ) %>%
+  left_join(
+    gene_annotations[
+      , c(
+        "probe", "ensembl_gene_id", "hgnc_symbol",
+        "entrezgene_id", "start_position", "end_position"
+      )
+    ] %>%
+      rename_with(~ paste0("gene_", .), starts_with("start")) %>%
+      rename_with(~ paste0("gene_", .), starts_with("end")),
+    by = "probe"
+  ) %>%
+  write_csv("meqtl_results/significant_results.csv")
 ```
 
 Finally, let's plot the beta value for each significant result, with the gene on the
@@ -572,88 +572,88 @@ x axis and the beta value on the y axis.
 ``` {r plot-significant-results}
 significant_results <- read.csv("meqtl_results/significant_results.csv")
 significant_results %>%
-    merge(
-        beta$filtered %>%
-            melt(varnames = c("probe", "sample"), value.name = "beta_value"),
-        by = "probe"
-    ) %>%
-    dplyr::select(
-        probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
-    ) %>%
-    merge(
-        comparison_group_memberships,
-        how = "left",
-        by.y = c("minfi_samplename", "comparison"), by.x = c("sample", "comparison")
-    ) %>%
-    mutate(
-        genotype = ifelse(
-            group == 0, # then extract the first genotype
-            # split on _, take the second, then split on v and take the first
-            comparison_name %>%
-                str_split("_") %>%
-                map_chr(-1) %>%
-                str_split("v") %>%
-                map_chr(1),
-            comparison_name %>%
-                str_split("_") %>%
-                map_chr(-1) %>%
-                str_split("v") %>%
-                map_chr(2)
-        ),
-        annotated_probe = paste0(
-            probe, " (",
-            ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
-        )
-    ) %>%
-    ggplot(aes(x = genotype, y = beta_value)) +
-    geom_point() +
-    geom_jitter(width = 0.2, height = 0) +
-    facet_wrap(~ comparison_name + annotated_probe, scales = "free_x", ncol = 5) +
-    ylim(0, 1)
+  merge(
+    beta$filtered %>%
+      melt(varnames = c("probe", "sample"), value.name = "beta_value"),
+    by = "probe"
+  ) %>%
+  dplyr::select(
+    probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
+  ) %>%
+  merge(
+    comparison_group_memberships,
+    how = "left",
+    by.y = c("minfi_samplename", "comparison"), by.x = c("sample", "comparison")
+  ) %>%
+  mutate(
+    genotype = ifelse(
+      group == 0, # then extract the first genotype
+      # split on _, take the second, then split on v and take the first
+      comparison_name %>%
+        str_split("_") %>%
+        map_chr(-1) %>%
+        str_split("v") %>%
+        map_chr(1),
+      comparison_name %>%
+        str_split("_") %>%
+        map_chr(-1) %>%
+        str_split("v") %>%
+        map_chr(2)
+    ),
+    annotated_probe = paste0(
+      probe, " (",
+      ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
+    )
+  ) %>%
+  ggplot(aes(x = genotype, y = beta_value)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0) +
+  facet_wrap(~ comparison_name + annotated_probe, scales = "free_x", ncol = 5) +
+  ylim(0, 1)
 if (!dir.exists("plots/meqtl")) {
-    dir.create("plots/meqtl")
+  dir.create("plots/meqtl")
 }
 ggsave("plots/meqtl/significant_result_beta.pdf", width = 9.5, height = 5)
 ```
 
 ``` {r plot-significant-results-all}
 significant_results %>%
-    merge(
-        beta$filtered %>%
-            melt(varnames = c("probe", "sample"), value.name = "beta_value"),
-        by = "probe"
-    ) %>%
-    dplyr::select(
-        probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
-    ) %>%
-    mutate(
-        relevant_SNP = ifelse(
-            grepl("TMC_PNP", comparison_name),
-            NA,
-            comparison_name %>%
-                str_extract("PNP|TMC|TM6|HSD")
-        )
-    ) %>%
-    merge(
-        samplesheet %>% # add the SNP genotype to the data
-            dplyr::select(all_of(c("minfi_samplename", SNP_names))) %>%
-            pivot_longer(cols = -minfi_samplename, names_to = "SNP", values_to = "genotype") %>%
-            mutate(
-                abbreviated_SNP = str_extract(SNP, "PNP|TMC|TM6|HSD")
-            ),
-        by.x = c("sample", "relevant_SNP"),
-        by.y = c("minfi_samplename", "abbreviated_SNP")
-    ) %>%
-    mutate(
-        annotated_probe = paste0(
-            probe, " (",
-            ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
-        )
-    ) %>%
-    ggplot(aes(x = genotype, y = beta_value)) +
-    geom_point() +
-    geom_jitter(width = 0.2, height = 0) +
-    facet_wrap(~ SNP + annotated_probe, scales = "free_x", ncol = 5) +
-    ylim(0, 1)
+  merge(
+    beta$filtered %>%
+      melt(varnames = c("probe", "sample"), value.name = "beta_value"),
+    by = "probe"
+  ) %>%
+  dplyr::select(
+    probe, comparison, comparison_name, hgnc_symbol, beta_value, sample
+  ) %>%
+  mutate(
+    relevant_SNP = ifelse(
+      grepl("TMC_PNP", comparison_name),
+      NA,
+      comparison_name %>%
+        str_extract("PNP|TMC|TM6|HSD")
+    )
+  ) %>%
+  merge(
+    samplesheet %>% # add the SNP genotype to the data
+      dplyr::select(all_of(c("minfi_samplename", SNP_names))) %>%
+      pivot_longer(cols = -minfi_samplename, names_to = "SNP", values_to = "genotype") %>%
+      mutate(
+        abbreviated_SNP = str_extract(SNP, "PNP|TMC|TM6|HSD")
+      ),
+    by.x = c("sample", "relevant_SNP"),
+    by.y = c("minfi_samplename", "abbreviated_SNP")
+  ) %>%
+  mutate(
+    annotated_probe = paste0(
+      probe, " (",
+      ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol), ")"
+    )
+  ) %>%
+  ggplot(aes(x = genotype, y = beta_value)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0) +
+  facet_wrap(~ SNP + annotated_probe, scales = "free_x", ncol = 5) +
+  ylim(0, 1)
 ggsave("plots/meqtl/significant_result_beta_all.pdf", width = 8, height = 5, create.dir = TRUE)
 ```

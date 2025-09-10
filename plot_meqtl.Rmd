@@ -17,73 +17,73 @@ Now volcano plot:
 ``` {r volcano}
 bonferroni_corrected_p_threshold <- 0.05 / nrow(meqtl_results)
 ggplot(meqtl_results, aes(x = coefficient, y = -log10(p_value))) +
+  geom_point(alpha = 0.5) +
+  geom_hline(
+    yintercept = -log10(bonferroni_corrected_p_threshold),
+    linetype = "dashed"
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  # theme_minimal() +
+  xlab("Effect size") +
+  ylab("-log10(unadjusted p-value)") + # annotate with gene names
+  geom_text_repel(
+    data = significant_results,
+    aes(label = ifelse(
+      is.na(hgnc_symbol), comparison_name,
+      paste0(comparison_name, " (", hgnc_symbol, ")")
+    )),
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines"),
+    segment.color = "grey50",
+    size = 3
+  )
+ggsave("plots/meqtl/volcano.png", width = 8, height = 5, create.dir = TRUE)
+
+for (loop_comparison in unique(meqtl_results$comparison)) {
+  comparison_results <- meqtl_results %>%
+    filter(comparison == loop_comparison)
+  comparison_name <- comparison_names %>%
+    filter(comparison == loop_comparison) %>%
+    pull(name)
+  n_significant_results <- read.csv("meqtl_results/significant_results.csv") %>%
+    filter(comparison == loop_comparison) %>%
+    nrow()
+  message(paste0(
+    "Comparison ", loop_comparison, " (", comparison_name, ")",
+    ": ", nrow(comparison_results),
+    " datapoints (", n_significant_results, " significant results)"
+  ))
+  bonferroni_corrected_p_threshold <- 0.05 / nrow(meqtl_results)
+  ggplot(comparison_results, aes(x = coefficient, y = -log10(p_value))) +
     geom_point(alpha = 0.5) +
     geom_hline(
-        yintercept = -log10(bonferroni_corrected_p_threshold),
-        linetype = "dashed"
+      yintercept = -log10(bonferroni_corrected_p_threshold),
+      linetype = "dashed"
     ) +
     geom_vline(xintercept = 0, linetype = "dashed") +
     # theme_minimal() +
     xlab("Effect size") +
     ylab("-log10(unadjusted p-value)") + # annotate with gene names
     geom_text_repel(
-        data = significant_results,
-        aes(label = ifelse(
-            is.na(hgnc_symbol), comparison_name,
-            paste0(comparison_name, " (", hgnc_symbol, ")")
-        )),
-        box.padding = unit(0.35, "lines"),
-        point.padding = unit(0.5, "lines"),
-        segment.color = "grey50",
-        size = 3
-    )
-ggsave("plots/meqtl/volcano.png", width = 8, height = 5, create.dir = TRUE)
-
-for (loop_comparison in unique(meqtl_results$comparison)) {
-    comparison_results <- meqtl_results %>%
-        filter(comparison == loop_comparison)
-    comparison_name <- comparison_names %>%
+      data = read.csv("meqtl_results/significant_results.csv") %>%
         filter(comparison == loop_comparison) %>%
-        pull(name)
-    n_significant_results <- read.csv("meqtl_results/significant_results.csv") %>%
-        filter(comparison == loop_comparison) %>%
-        nrow()
-    message(paste0(
-        "Comparison ", loop_comparison, " (", comparison_name, ")",
-        ": ", nrow(comparison_results),
-        " datapoints (", n_significant_results, " significant results)"
+        mutate(
+          hgnc_symbol = ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol)
+        ),
+      aes(label = hgnc_symbol),
+      box.padding = unit(0.35, "lines"),
+      point.padding = unit(0.5, "lines"),
+      segment.color = "grey50",
+      size = 3
+    ) +
+    ggtitle(paste0(
+      comparison_name, " (", loop_comparison, "): ",
+      n_significant_results, " significant results"
     ))
-    bonferroni_corrected_p_threshold <- 0.05 / nrow(meqtl_results)
-    ggplot(comparison_results, aes(x = coefficient, y = -log10(p_value))) +
-        geom_point(alpha = 0.5) +
-        geom_hline(
-            yintercept = -log10(bonferroni_corrected_p_threshold),
-            linetype = "dashed"
-        ) +
-        geom_vline(xintercept = 0, linetype = "dashed") +
-        # theme_minimal() +
-        xlab("Effect size") +
-        ylab("-log10(unadjusted p-value)") + # annotate with gene names
-        geom_text_repel(
-            data = read.csv("meqtl_results/significant_results.csv") %>%
-                filter(comparison == loop_comparison) %>%
-                mutate(
-                    hgnc_symbol = ifelse(is.na(hgnc_symbol), "No Gene", hgnc_symbol)
-                ),
-            aes(label = hgnc_symbol),
-            box.padding = unit(0.35, "lines"),
-            point.padding = unit(0.5, "lines"),
-            segment.color = "grey50",
-            size = 3
-        ) +
-        ggtitle(paste0(
-            comparison_name, " (", loop_comparison, "): ",
-            n_significant_results, " significant results"
-        ))
-    ggsave(
-        paste0("plots/meqtl/volcano_", loop_comparison, ".png"),
-        width = 8, height = 5
-    )
+  ggsave(
+    paste0("plots/meqtl/volcano_", loop_comparison, ".png"),
+    width = 8, height = 5
+  )
 }
 ```
 
@@ -91,47 +91,47 @@ Further plot: bar plot with x = comparison, y = number of significant results, c
 by down- or up-regulation (and stacked)
 ``` {r bar-plot}
 comparison_results <- significant_results %>%
-    mutate(
-        direction = ifelse(coefficient > 0, "Hypermethylated", "Hypomethylated")
-    ) %>%
-    group_by(comparison, comparison_name, direction) %>%
-    summarise(n_significant_results = n()) %>%
-    left_join(comparison_names, by = "comparison")
+  mutate(
+    direction = ifelse(coefficient > 0, "Hypermethylated", "Hypomethylated")
+  ) %>%
+  group_by(comparison, comparison_name, direction) %>%
+  summarise(n_significant_results = n()) %>%
+  left_join(comparison_names, by = "comparison")
 
 ggplot(
-    comparison_results,
-    aes(x = full_name, y = n_significant_results, fill = direction)
+  comparison_results,
+  aes(x = full_name, y = n_significant_results, fill = direction)
 ) +
-    geom_bar(stat = "identity") +
-    xlab("Comparison") +
-    ylab("#differentially methylated CpGs") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    scale_fill_manual(
-        values = c("Hypermethylated" = "red", "Hypomethylated" = "blue")
-    )
+  geom_bar(stat = "identity") +
+  xlab("Comparison") +
+  ylab("#differentially methylated CpGs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(
+    values = c("Hypermethylated" = "red", "Hypomethylated" = "blue")
+  )
 ggsave("plots/meqtl/barplot.pdf", width = 4, height = 4)
 ```
 
 Finally, an upSet plot of overlapping significant results between comparisons:
 ``` {r upset-plot}
 significant_results_wide <- significant_results %>%
-    select(probe, comparison_name) %>%
-    distinct() %>%
-    mutate(present = as.numeric(1)) %>%
-    pivot_wider(
-        names_from = comparison_name, values_from = present, values_fill = 0
-    )
+  select(probe, comparison_name) %>%
+  distinct() %>%
+  mutate(present = as.numeric(1)) %>%
+  pivot_wider(
+    names_from = comparison_name, values_from = present, values_fill = 0
+  )
 
-significant_results_matrix <- significant_results_wide %>% 
-    as.data.frame() %>%
-    column_to_rownames(var = "probe")
+significant_results_matrix <- significant_results_wide %>%
+  as.data.frame() %>%
+  column_to_rownames(var = "probe")
 
 pdf("plots/meqtl/upset.pdf", width = 8, height = 5, onefile = FALSE)
 upset(
-    significant_results_matrix,
-    nsets = ncol(significant_results_matrix),
-    mainbar.y.label = "Significant DMPs",
-    sets.x.label = "DMPs per Comparison"
+  significant_results_matrix,
+  nsets = ncol(significant_results_matrix),
+  mainbar.y.label = "Significant DMPs",
+  sets.x.label = "DMPs per Comparison"
 )
 dev.off()
 ```
