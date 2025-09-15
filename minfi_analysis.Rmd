@@ -5,6 +5,7 @@ library(ggrepel)
 library(reshape2)
 library(ComplexHeatmap)
 library(minfi)
+library(circlize)
 ```
 
 
@@ -332,15 +333,15 @@ lapply(c("unfiltered", "filtered"), function(pca_type) {
     match(colnames(high_variance_beta[[pca_type]]), samplesheet$minfi_samplename),
     "paper_key"
   ]
-  colour_mapping <- c(
-    "CC" = "red", "CG" = "blue", "GG" = "green",
-    "CT" = "blue", "TT" = "green"
-  )
+  ## genotype colour sets
+  geno_cols_C_G <- c("CC" = "#EE7733", "CG" = "#0077BB", "GG" = "#EE3377")
+  geno_cols_C_T <- c("CC" = "#EE7733", "CT" = "#33BBEE", "TT" = "#009988")
 
   pdf(paste0("plots/heatmap/", pca_type, ".pdf"), width = 8.5, height = 5.5)
   Heatmap(
     t(high_variance_beta[[pca_type]]),
     name = "beta",
+    col = colorRamp2(c(0, 0.5, 1), c("#313695", "#FFFFFF", "#A50026")),
     show_column_names = FALSE,
     column_dend_height = unit(2, "cm"),
     row_dend_width = unit(2, "cm"),
@@ -350,8 +351,8 @@ lapply(c("unfiltered", "filtered"), function(pca_type) {
         SNP_names
       ],
       col = list(
-        PNPLA3 = colour_mapping, TM6SF2 = colour_mapping,
-        TMC4 = colour_mapping, HSD17B13 = colour_mapping
+        PNPLA3 = geno_cols_C_G, TM6SF2 = geno_cols_C_T,
+        TMC4 = geno_cols_C_T, HSD17B13 = geno_cols_C_G
       ),
       na_col = "grey"
     )
